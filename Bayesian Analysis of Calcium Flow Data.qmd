@@ -1,0 +1,287 @@
+---
+title: "Bayesian Analysis of Calcium Flow Data"
+author: "Mingzhe Liu"
+format: html
+editor: visual
+---
+
+## 1
+
+$$
+p(y | \theta) = \frac{\theta^y e^{-\theta}}{y!}
+$$
+
+$$
+\log p(y | \theta) = y \log(\theta) - \theta - \log(y!)
+$$
+
+$$
+\frac{\partial}{\partial \theta} \log p(y | \theta) = \frac{y}{\theta} - 1
+$$
+
+$$
+\frac{\partial^2}{\partial \theta^2} \log p(y | \theta) = -\frac{y}{\theta^2}
+$$
+
+$$
+I(\theta) = - \mathbb{E} \left( \frac{\partial^2}{\partial \theta^2} \log p(y | \theta) \right)
+$$
+
+The expectation of $y$ is $\mathbb{E}(y) = \theta$, so the Fisher information becomes:
+
+$$
+I(\theta) = \frac{1}{\theta}
+$$
+
+$$
+p_J(\theta) \propto \sqrt{I(\theta)} = \frac{1}{\sqrt\theta}
+$$
+
+Thus, the Jeffreys prior is:
+
+$$
+p_J(\theta) = \frac{1}{\sqrt\theta} \quad (\theta > 0)
+$$
+
+$$
+\text{Gamma}(\alpha, \beta) \propto \theta^{\alpha - 1} e^{-\beta \theta}
+$$
+
+To match this form to the Jeffreys prior $\frac{1}{\theta}$, it will be
+
+$$
+\alpha - 1 = -\frac{1}{2} \quad \Rightarrow \quad \alpha = \frac{1}{2}
+$$
+
+$$
+\alpha = \frac{1}{2}, \quad \beta = 0
+$$
+
+## 2
+
+### (a)
+
+```{r}
+set.seed(2024)
+n_c <- 32  
+mean_c <- 1.013  
+sd_c <- 0.24 
+
+# Prior
+alpha_prior <- 0.001  
+beta_prior <- 0.001  
+
+S <- 10000
+
+# (1) Sample sigma_c^2 | data
+shape_post <- (n_c - 1) / 2 + alpha_prior
+scale_post <- (sum((rnorm(n_c, mean_c, sd_c) - mean_c)^2) / 2) + beta_prior
+sigma2_c_draws <- 1 / rgamma(S, shape_post, scale_post)
+
+# (2) Sample mu_c | sigma_c^2, data
+var_mu_c_post <- sigma2_c_draws / n_c
+mean_mu_c_post <- mean_c
+mu_c_draws <- rnorm(S, mean_mu_c_post, sqrt(var_mu_c_post))
+
+mean(mu_c_draws)
+var(mu_c_draws)
+mean(sigma2_c_draws)
+
+
+
+```
+
+### (b)
+
+```{r}
+set.seed(2024)
+n_t <- 36  
+mean_t <- 1.173  
+sd_t <- 0.20  
+
+# Prior 
+alpha_prior <- 0.001  
+beta_prior <- 0.001  
+
+S <- 10000 
+
+# (1) Sample sigma_t^2 | data
+shape_post_t <- (n_t - 1) / 2 + alpha_prior
+scale_post_t <- (sum((rnorm(n_t, mean_t, sd_t) - mean_t)^2) / 2) + beta_prior
+sigma2_t_draws <- 1 / rgamma(S, shape_post_t, scale_post_t)
+
+# (2) Sample mu_t | sigma_t^2, data
+var_mu_t_post <- sigma2_t_draws / n_t
+mean_mu_t_post <- mean_t
+mu_t_draws <- rnorm(S, mean_mu_t_post, sqrt(var_mu_t_post))
+
+mean(mu_t_draws)
+var(mu_t_draws)
+mean(sigma2_t_draws)
+
+
+```
+
+### (c)
+
+```{r}
+
+psi_draws <- mu_t_draws - mu_c_draws
+
+hist(psi_draws, main = "Posterior of the Mean Difference (psi = mu_t - mu_c)", 
+     xlab = "psi (mean difference)", breaks = 30)
+
+```
+
+### (d)
+
+```{r}
+library(coda)
+hpd_interval <- HPDinterval(as.mcmc(psi_draws), prob = 0.95)
+
+hpd_interval
+```
+
+The 95% credible interval indicates that the treatment likely increases calcium flow, with the difference ranging from 0.0318 to 0.281. and the interval does not include 0, we could saythat the treatment has a positive effect.
+
+## 3
+
+### (a)
+
+the likelihood is
+
+$$
+p(y_1, \dots, y_n | \theta) \propto \exp\left( -\frac{1}{2} \sum_{i=1}^{n} (y_i - \theta)^T \Sigma^{-1} (y_i - \theta) \right)
+$$
+
+$$
+p(y | \theta) \propto \exp\left( -\frac{1}{2} \left[ \sum_{i=1}^{n} y_i^T \Sigma^{-1} y_i - 2 \theta^T \Sigma^{-1} \sum_{i=1}^{n} y_i + n \theta^T \Sigma^{-1} \theta \right] \right)
+$$
+
+For the prior,
+
+$$
+\theta \sim N(\mu_{\theta}, \Sigma_{\theta})
+$$
+
+so the prior density is
+
+$$
+p(\theta) \propto \exp\left( -\frac{1}{2} (\theta - \mu_{\theta})^T \Sigma_{\theta}^{-1} (\theta - \mu_{\theta}) \right)
+$$
+
+By expanding,
+
+$$
+p(\theta) \propto \exp\left( -\frac{1}{2} \left[ \theta^T \Sigma_{\theta}^{-1} \theta - 2 \mu_{\theta}^T \Sigma_{\theta}^{-1} \theta + \mu_{\theta}^T \Sigma_{\theta}^{-1} \mu_{\theta} \right] \right)
+$$
+
+For posterior,
+
+$$
+p(\theta | y) \propto p(y | \theta) p(\theta)
+$$
+
+$$
+p(\theta | y) \propto \exp\left( -\frac{1}{2} \left[ n \theta^T \Sigma^{-1} \theta - 2 \theta^T \Sigma^{-1} \sum_{i=1}^{n} y_i \right] \right) \exp\left( -\frac{1}{2} \left[ \theta^T \Sigma_{\theta}^{-1} \theta - 2 \mu_{\theta}^T \Sigma_{\theta}^{-1} \theta \right] \right)
+$$
+
+Now combine the terms that depend on $\theta$:
+
+$$
+p(\theta | y) \propto \exp\left( -\frac{1}{2} \left[ \theta^T (n \Sigma^{-1} + \Sigma_{\theta}^{-1}) \theta - 2 \theta^T \left( \Sigma^{-1} \sum_{i=1}^{n} y_i + \Sigma_{\theta}^{-1} \mu_{\theta} \right) \right] \right).
+$$
+
+$$
+Q_{\theta} = n \Sigma^{-1} + \Sigma_{\theta}^{-1}
+$$
+
+$$
+\ell_{\theta} = \Sigma^{-1} \sum_{i=1}^{n} y_i + \Sigma_{\theta}^{-1} \mu_{\theta}
+$$
+
+Therefore, the posterior distribution is:
+
+$$
+\theta | y \sim N(Q_{\theta}^{-1} \ell_{\theta}, Q_{\theta}^{-1})
+$$
+
+where $Q_{\theta} = n \Sigma^{-1} + \Sigma_{\theta}^{-1}$ and $\ell_{\theta} = \Sigma^{-1} \sum_{i=1}^{n} y_i + \Sigma_{\theta}^{-1} \mu_{\theta}$
+
+### (b)
+
+$$
+\Sigma = \text{diag}(\sigma_1^2, \dots, \sigma_d^2)
+$$
+
+$$
+\Sigma_{\theta} = \text{diag}(\sigma_{\theta 1}^2, \dots, \sigma_{\theta d}^2)
+$$
+
+Since both $\Sigma$ and $\Sigma_{\theta}$ are diagonal, their inverses are also diagonal
+
+$$
+\Sigma^{-1} = \text{diag}\left( \frac{1}{\sigma_1^2}, \dots, \frac{1}{\sigma_d^2} \right)
+$$
+
+$$
+\Sigma_{\theta}^{-1} = \text{diag}\left( \frac{1}{\sigma_{\theta 1}^2}, \dots, \frac{1}{\sigma_{\theta d}^2} \right)
+$$
+
+Thus, the precision matrix $Q_{\theta}$ is
+
+$$
+Q_\theta = \text{diag}\left( n \frac{1}{\sigma_1^2} + \frac{1}{\sigma_{\theta 1}^2}, \dots, n \frac{1}{\sigma_d^2} + \frac{1}{\sigma_{\theta d}^2} \right)
+$$
+
+$\ell_{\theta}$ is
+
+$$
+\ell_{\theta} = \Sigma^{-1} \sum_{i=1}^{n} y_i + \Sigma_{\theta}^{-1} \mu_{\theta}
+$$
+
+Since $\Sigma^{-1}$ and $\Sigma_{\theta}^{-1}$ are diagonal, the posterior coefficient is also computed element-wise:
+
+$$
+\ell_{\theta j} = \frac{1}{\sigma_j^2} \sum_{i=1}^{n} y_{ij} + \frac{1}{\sigma_{\theta j}^2} \mu_{\theta j}
+$$
+
+for each component $j$.
+
+The posterior covariance matrix is
+
+$$
+Q_{\theta}^{-1} = \text{diag}\left( \frac{1}{n \frac{1}{\sigma_1^2} + \frac{1}{\sigma_{\theta 1}^2}}, \dots, \frac{1}{n \frac{1}{\sigma_d^2} + \frac{1}{\sigma_{\theta d}^2}} \right)
+$$
+
+$$
+\text{Posterior Mean} = Q_{\theta}^{-1} \ell_{\theta} = \left( n \Sigma^{-1} + \Sigma_{\theta}^{-1} \right)^{-1} \left( \Sigma^{-1} \sum_{i=1}^{n} y_i + \Sigma_{\theta}^{-1} \mu_{\theta} \right)
+$$
+
+where $\Sigma^{-1} = \text{diag}\left( \frac{1}{\sigma_1^2}, \dots, \frac{1}{\sigma_d^2} \right)$, $\Sigma_{\theta}^{-1} = \text{diag}\left( \frac{1}{\sigma_{\theta 1}^2}, \dots, \frac{1}{\sigma_{\theta d}^2} \right)$.
+
+### (c)
+
+$$
+\sigma_j^2 = \sigma^2 \quad \text{for} \quad j = 1, \dots, d
+$$
+
+$$
+\sigma_{\theta j}^2 = \sigma_{\theta}^2 \quad \text{for} \quad j = 1, \dots, d
+$$
+
+This implies that $\Sigma = \sigma^2 I$ and $\Sigma_{\theta} = \sigma_{\theta}^2 I$, where $I$ is the identity matrix.
+
+$$
+Q_{\theta} = \left( n \frac{1}{\sigma^2} + \frac{1}{\sigma_{\theta}^2} \right) I
+$$
+
+$$
+\ell_{\theta} = \frac{1}{\sigma^2} \sum_{i=1}^{n} y_i + \frac{1}{\sigma_{\theta}^2} \mu_{\theta}
+$$ $$
+Q_{\theta}^{-1} = \left( n \frac{1}{\sigma^2} + \frac{1}{\sigma_{\theta}^2} \right)^{-1} I
+$$
+
+$$
+\text{Posterior Mean} = \left( n \frac{1}{\sigma^2} + \frac{1}{\sigma_{\theta}^2} \right)^{-1} \left( \frac{1}{\sigma^2} \sum_{i=1}^{n} y_i + \frac{1}{\sigma_{\theta}^2} \mu_{\theta} \right)
+$$
